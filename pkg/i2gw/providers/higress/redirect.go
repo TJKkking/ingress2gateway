@@ -62,9 +62,9 @@ func applyByRedirect(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, redirect
 	var redirectFilter gatewayv1.HTTPRequestRedirectFilter
 
 	redirect := path.extra.redirect
-	parseURL, err := url.Parse(redirect.redirectURL)
-	if err != nil {
-		errors = append(errors, field.Invalid(field.NewPath("metadata", "annotations"), path.ingress.Annotations, err.Error()))
+	parseURL, parseErr := url.Parse(redirect.redirectURL)
+	if parseErr != nil {
+		errors = append(errors, field.Invalid(field.NewPath("metadata", "annotations"), path.ingress.Annotations, parseErr.Error()))
 	}
 	redirectFilter.Scheme = &parseURL.Scheme
 	hostname := gatewayv1.PreciseHostname(parseURL.Hostname())
@@ -113,9 +113,9 @@ func applyByRedirect(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, redirect
 			},
 		}))
 	}
-	err = deleteBackendNew(httpRoute, path)
-	if err != nil {
-		errors = append(errors, field.Invalid(field.NewPath("metadata", "annotations"), path.ingress.Annotations, err.Error()))
+	delErr := deleteBackendNew(httpRoute, path)
+	if delErr != nil {
+		errors = append(errors, field.Invalid(field.NewPath("metadata", "annotations"), path.ingress.Annotations, delErr.Error()))
 	}
 
 	return errors

@@ -20,6 +20,10 @@ func newResourceReader(conf *i2gw.ProviderConf) *resourceReader {
 	}
 }
 
+// readResourcesFromCluster reads resources from the cluster and returns a storage object.
+// It uses the provided context and the client from the configuration to read ingresses from the cluster.
+// The ingresses are then stored in the storage object.
+// Returns the storage object and any error encountered during the process.
 func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage, error) {
 	storage := newResourcesStorage()
 
@@ -31,8 +35,9 @@ func (r *resourceReader) readResourcesFromCluster(ctx context.Context) (*storage
 	return storage, nil
 }
 
+// readResourcesFromFile reads the resources from a file and returns a storage object containing the ingresses.
+// It takes a filename as input and returns the storage object and an error if any.
 func (r *resourceReader) readResourcesFromFile(filename string) (*storage, error) {
-	// TODO: implement 貌似不生效
 	storage := newResourcesStorage()
 
 	ingresses, err := common.ReadIngressesFromFile(filename, r.conf.Namespace, sets.New(HigressClass))

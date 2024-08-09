@@ -34,28 +34,36 @@ func getPathsByMatchGroups(rg common.IngressRuleGroup) (map[pathMatchKey][]ingre
 		if err := headerMod.Parse(&ingress); err != nil {
 			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
 		}
-		extraFeatures.headerMod = &headerMod
+		if headerMod.configExsits() {
+			extraFeatures.headerMod = &headerMod
+		}
 
 		// parse redirect annotations
 		redirect := redirectConfig{}
 		if err := redirect.Parse(&ingress); err != nil {
 			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
 		}
-		extraFeatures.redirect = &redirect
+		if redirect.configExsits() {
+			extraFeatures.redirect = &redirect
+		}
 
 		// parse mirror annotations
 		mirror := mirrorConfig{}
 		if err := mirror.Parse(&ingress); err != nil {
 			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
 		}
-		extraFeatures.mirror = &mirror
+		if mirror.configExsits() {
+			extraFeatures.mirror = &mirror
+		}
 
 		// parse timeout annotations
 		timeout := timeoutConfig{}
 		if err := timeout.Parse(&ingress); err != nil {
 			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
 		}
-		extraFeatures.timeout = &timeout
+		if timeout.configExsits() {
+			extraFeatures.timeout = &timeout
+		}
 
 		if !redirect.redirectExsits() {
 
@@ -64,14 +72,18 @@ func getPathsByMatchGroups(rg common.IngressRuleGroup) (map[pathMatchKey][]ingre
 			if err := canaryAnnotations.parse(&ingress); err != nil {
 				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
 			}
-			extraFeatures.canary = &canaryAnnotations
+			if canaryAnnotations.configExsits() {
+				extraFeatures.canary = &canaryAnnotations
+			}
 
 			// parse rewrite annotations
 			rewrite := rewriteConfig{}
 			if err := rewrite.Parse(&ingress); err != nil {
 				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
 			}
-			extraFeatures.rewrite = &rewrite
+			if rewrite.configExsits() {
+				extraFeatures.rewrite = &rewrite
+			}
 
 		}
 
@@ -95,7 +107,7 @@ func getPathMatchKey(ip ingressPath) pathMatchKey {
 	// 	canaryHeaderKey = ip.extra.canary.headerKey
 	// }
 	// 同一host下的path以pathType-path作为key聚合
-	return pathMatchKey(fmt.Sprintf("%s/%s", pathType, ip.path.Path))
+	return pathMatchKey(fmt.Sprintf("%s%s", pathType, ip.path.Path))
 }
 
 func findAnnotationValue(annotations map[string]string, key string) string {

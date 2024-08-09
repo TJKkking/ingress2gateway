@@ -48,6 +48,7 @@ func (p *Provider) ToGatewayAPI() (i2gw.GatewayResources, field.ErrorList) {
 	return p.converter.convert(p.storage)
 }
 
+// ReadResourcesFromCluster reads resources from the cluster and stores them in the provider's storage.
 func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
 	storage, err := p.resourceReader.readResourcesFromCluster(ctx)
 	if err != nil {
@@ -58,6 +59,8 @@ func (p *Provider) ReadResourcesFromCluster(ctx context.Context) error {
 	return nil
 }
 
+// ReadResourcesFromFile reads resources from a file and stores them in the provider's storage.
+// It takes a context and a filename as input parameters.
 func (p *Provider) ReadResourcesFromFile(_ context.Context, filename string) error {
 	storage, err := p.resourceReader.readResourcesFromFile(filename)
 	if err != nil {

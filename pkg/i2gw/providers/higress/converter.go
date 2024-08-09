@@ -77,6 +77,7 @@ func (c *converter) convertOlds(storage *storage) (i2gw.GatewayResources, field.
 	return gatewayResources, errs
 }
 
+// FeatureHandler is a function type that handles features for HTTP routes.
 type FeatureHandler func(httpRoute *gatewayv1.HTTPRoute, paths []ingressPath) field.ErrorList
 
 // Converter for higress to gateway resources.
