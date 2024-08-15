@@ -44,7 +44,8 @@ func newConverter() *converter {
 	return &converter{
 		FeatureHandler: []FeatureHandler{
 			applyHTTPRouteWithCanary,
-			applyHTTPRouteWithHeaderMod,
+			applyHTTPRouteWithRequestHeaderMod,
+			applyHTTPRouteWithResponseHeaderMod,
 			applyHTTPRouteWithRewrite,
 			applyHTTPRouteWithMirror,
 			applyHTTPRouteWithTimeout,

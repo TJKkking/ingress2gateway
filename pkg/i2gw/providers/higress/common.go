@@ -20,12 +20,13 @@ type ingressPath struct {
 }
 
 type extra struct {
-	canary    *canaryConfig
-	headerMod *headerModConfig
-	rewrite   *rewriteConfig
-	redirect  *redirectConfig
-	mirror    *mirrorConfig
-	timeout   *timeoutConfig
+	canary            *canaryConfig
+	requestHeaderMod  *requestHeaderModConfig
+	responseHeaderMod *responseHeaderModConfig
+	rewrite           *rewriteConfig
+	redirect          *redirectConfig
+	mirror            *mirrorConfig
+	timeout           *timeoutConfig
 }
 
 type pathMatchKey string
@@ -60,27 +61,6 @@ func getPathMatchType(pathType networkingv1.PathType) gatewayv1.PathMatchType {
 		// 返回一个默认值或处理未知的pathType
 		return gatewayv1.PathMatchType("")
 	}
-}
-
-func getHeaderMatchTypeExact() *gatewayv1.HeaderMatchType {
-	exact := gatewayv1.HeaderMatchExact
-	return &exact
-}
-
-func getHeaderMatchTypeRegex() *gatewayv1.HeaderMatchType {
-	regex := gatewayv1.HeaderMatchRegularExpression
-	return &regex
-}
-
-func toNamespacePointer(namespace string) *gatewayv1.Namespace {
-	ns := gatewayv1.Namespace(namespace)
-	return &ns
-}
-
-func toPortNumber(port int) *gatewayv1.PortNumber {
-	p := gatewayv1.PortNumber(port)
-	return &p
-
 }
 
 func singleBackendRuleExists(httpRoute *gatewayv1.HTTPRoute, path *ingressPath) *gatewayv1.HTTPRouteRule {
@@ -119,10 +99,19 @@ func matchRule(rule gatewayv1.HTTPRouteRule, path *ingressPath) bool {
 }
 
 func isPathMatch(match *gatewayv1.HTTPRouteMatch, path *ingressPath) bool {
-	if *match.Path.Value != path.path.Path {
+	if match != nil && match.Path != nil && match.Path.Value != nil && *match.Path.Value != path.path.Path {
 		return false
 	}
-	matchType := *match.Path.Type
+	var matchType gatewayv1.PathMatchType
+	if match.Path != nil && match.Path.Type != nil {
+		matchType = *match.Path.Type
+	} else {
+		return false
+	}
+
+	if path.path.PathType == nil {
+		return false
+	}
 	switch matchType {
 	case gatewayv1.PathMatchExact:
 		return *path.path.PathType == networkingv1.PathTypeExact
@@ -134,45 +123,19 @@ func isPathMatch(match *gatewayv1.HTTPRouteMatch, path *ingressPath) bool {
 }
 
 func matchBackendRefs(backendRefs []gatewayv1.HTTPBackendRef, path *ingressPath) bool {
+	if path == nil || path.path.Backend.Service == nil {
+		return false
+	}
 	for _, backend := range backendRefs {
+		if backend.BackendRef.Port == nil {
+			continue
+		}
 		if backend.BackendRef.Name == gatewayv1.ObjectName(path.path.Backend.Service.Name) &&
-			backend.BackendRef.Port != nil &&
 			*backend.BackendRef.Port == gatewayv1.PortNumber(path.path.Backend.Service.Port.Number) {
 			return true
 		}
 	}
 	return false
-}
-
-func printRules(httpRoute *gatewayv1.HTTPRoute) {
-	for k, rule := range httpRoute.Spec.Rules {
-		fmt.Println("----------------")
-		fmt.Println("Rule: ", k)
-		if rule.Matches != nil {
-			for i, match := range rule.Matches {
-				fmt.Println("Match: ", i)
-				if match.Path != nil {
-					fmt.Println("Path: ", match.Path)
-				}
-				if match.Headers != nil {
-					for j, header := range match.Headers {
-						fmt.Println("Header: ", j)
-						fmt.Println("Name: ", header.Name)
-						fmt.Println("Value: ", header.Value)
-					}
-				}
-			}
-
-		}
-		if rule.BackendRefs != nil {
-			for i, backend := range rule.BackendRefs {
-				fmt.Println("Backend: ", i)
-				fmt.Println("Name: ", backend.Name)
-				fmt.Println("Weight: ", backend.Weight)
-			}
-		}
-	}
-	fmt.Println("----------------")
 }
 
 type createHTTPRouteRuleParam struct {
@@ -182,7 +145,10 @@ type createHTTPRouteRuleParam struct {
 	timeouts    *gatewayv1.HTTPRouteTimeouts
 }
 
-func deleteBackendNew(httpRoute *gatewayv1.HTTPRoute, path *ingressPath) *field.Error {
+func deleteBackend(httpRoute *gatewayv1.HTTPRoute, path *ingressPath) *field.Error {
+	if path == nil {
+		return field.Invalid(field.NewPath("metadata", "annotations"), path, "path is nil")
+	}
 	for i := 0; i < len(httpRoute.Spec.Rules); i++ {
 		rule := &httpRoute.Spec.Rules[i]
 		if !hasMatches(rule.Matches) {
@@ -218,7 +184,10 @@ func hasMatches(matches []gatewayv1.HTTPRouteMatch) bool {
 }
 
 func isMatchPath(match gatewayv1.HTTPRouteMatch, path *ingressPath) bool {
-	return match.Path != nil && *match.Path.Value == path.path.Path && *match.Path.Type == getPathMatchType(*path.path.PathType)
+	if match.Path == nil || match.Path.Value == nil || match.Path.Type == nil {
+		return false
+	}
+	return *match.Path.Value == path.path.Path && *match.Path.Type == getPathMatchType(*path.path.PathType)
 }
 
 func hasBackendRefs(backendRefs []gatewayv1.HTTPBackendRef) bool {
@@ -279,8 +248,8 @@ func isPathValid(path string) *field.Error {
 }
 
 func groupCaptureUsed(path string) *field.Error {
-	if strings.Contains(path, "(") && strings.Contains(path, ")") {
-		return field.Invalid(field.NewPath("metadata", "annotations"), path, "group capture not supported")
+	if strings.Contains(path, "(") || strings.Contains(path, ")") {
+		return field.Invalid(field.NewPath("metadata", "annotations"), path, "'(' or ')' found, group capture not supported")
 	}
 	return nil
 }

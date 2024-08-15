@@ -5,10 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw"
 	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -21,56 +19,24 @@ const (
 	RequestHeaderRemove = "request-header-control-remove"
 )
 
-// type annoHeader struct{}
-
-type headerModConfig struct {
+type requestHeaderModConfig struct {
 	add    map[string]string
 	update map[string]string
 	remove []string
 }
 
-func headerModFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.GatewayResources) field.ErrorList {
-	ruleGroups := common.GetRuleGroups(ingresses)
-	var errors field.ErrorList
-
-	for _, rg := range ruleGroups {
-		ingressPathsByMatchKey, errs := getPathsByMatchGroups(rg)
-		if len(errs) > 0 {
-			return errs
-		}
-
-		for _, paths := range ingressPathsByMatchKey {
-			path := paths[0]
-			key := types.NamespacedName{Namespace: path.ingress.Namespace, Name: common.RouteName(rg.Name, rg.Host)}
-			httpRoute, ok := gatewayResources.HTTPRoutes[key]
-			if !ok {
-				fmt.Println("httpRoute not found")
-				continue
-			}
-
-			applyHTTPRouteWithHeaderMod(&httpRoute, paths)
-			gatewayResources.HTTPRoutes[key] = httpRoute
-		}
-	}
-
-	return errors
-}
-
-func applyHTTPRouteWithHeaderMod(httpRoute *gatewayv1.HTTPRoute, paths []ingressPath) field.ErrorList {
+func applyHTTPRouteWithRequestHeaderMod(httpRoute *gatewayv1.HTTPRoute, paths []ingressPath) field.ErrorList {
 	var headerPath []ingressPath
 	var errors field.ErrorList
-
 	for _, path := range paths {
-		if path.extra != nil && path.extra.headerMod != nil && path.extra.headerMod.configExsits() {
+		if path.extra != nil && path.extra.requestHeaderMod != nil && path.extra.requestHeaderMod.configExsits() {
 			headerPath = append(headerPath, path)
 		}
 	}
-
 	for i, path := range headerPath {
 		var gwHTTPRouteFilters []gatewayv1.HTTPRouteFilter
 		var headerFilter gatewayv1.HTTPHeaderFilter
-		headerMod := path.extra.headerMod
-
+		headerMod := path.extra.requestHeaderMod
 		if headerMod.add != nil {
 			var addHeaders []gatewayv1.HTTPHeader
 			for key, value := range headerMod.add {
@@ -81,7 +47,6 @@ func applyHTTPRouteWithHeaderMod(httpRoute *gatewayv1.HTTPRoute, paths []ingress
 			}
 			headerFilter.Add = addHeaders
 		}
-
 		if headerMod.update != nil {
 			var updateHeaders []gatewayv1.HTTPHeader
 			for key, value := range headerMod.update {
@@ -90,15 +55,11 @@ func applyHTTPRouteWithHeaderMod(httpRoute *gatewayv1.HTTPRoute, paths []ingress
 					Value: value,
 				})
 			}
-
 			headerFilter.Set = updateHeaders
 		}
-
 		if headerMod.remove != nil {
 			var removeHeaders []string
-
 			removeHeaders = append(removeHeaders, headerMod.remove...)
-
 			headerFilter.Remove = removeHeaders
 		}
 
@@ -111,29 +72,26 @@ func applyHTTPRouteWithHeaderMod(httpRoute *gatewayv1.HTTPRoute, paths []ingress
 			errors = append(errors, err)
 			continue
 		}
-		errs := applyByHeaderMod(httpRoute, &path, backendRef, gwHTTPRouteFilters)
+		errs := applyByRequestHeaderMod(httpRoute, &path, backendRef, gwHTTPRouteFilters)
 		if errs != nil {
 			errors = append(errors, errs)
 		}
 	}
-
 	return errors
 }
 
-func applyByHeaderMod(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, backendRef *gatewayv1.BackendRef, gwHTTPRouteFilters []gatewayv1.HTTPRouteFilter) *field.Error {
-	// fmt.Println("bakendRef Name is: ", backendRef.Name)
+func applyByRequestHeaderMod(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, backendRef *gatewayv1.BackendRef, gwHTTPRouteFilters []gatewayv1.HTTPRouteFilter) *field.Error {
 	if rule := singleBackendRuleExists(httpRoute, path); rule != nil {
 		rule.Filters = append(rule.Filters, gwHTTPRouteFilters...)
 		return nil
 	} else {
-		// fmt.Println("New Rule")
 		match := gatewayv1.HTTPRouteMatch{
 			Path: &gatewayv1.HTTPPathMatch{
 				Type:  ConvertPathType(path.path.PathType),
 				Value: ptr.To(path.path.Path),
 			},
 		}
-		deleteBackendNew(httpRoute, path)
+		deleteBackend(httpRoute, path)
 		httpRoute.Spec.Rules = append(httpRoute.Spec.Rules, *createHTTPRouteRule(createHTTPRouteRuleParam{
 			filters:     gwHTTPRouteFilters,
 			backendRefs: []gatewayv1.HTTPBackendRef{{BackendRef: *backendRef}},
@@ -144,7 +102,7 @@ func applyByHeaderMod(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, backend
 	return nil
 }
 
-func (h *headerModConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
+func (h *requestHeaderModConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 	if hAdd := findAnnotationValue(ingress.Annotations, RequestHeaderAdd); hAdd != "" {
 		h.add = convertAddOrUpdate(hAdd)
 	}
@@ -158,7 +116,7 @@ func (h *headerModConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 	return nil
 }
 
-func (h *headerModConfig) configExsits() bool {
+func (h *requestHeaderModConfig) configExsits() bool {
 	return h.add != nil || h.update != nil || h.remove != nil
 }
 
