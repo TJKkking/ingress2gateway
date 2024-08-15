@@ -15,6 +15,16 @@ const (
 	// HigressClass is the default ingress class used by the Higress controller.
 	HigressClass = "higress"
 
+	// GatewayClassName is the default gateway class name used by the Higress controller.
+	GatewayClassName = "higress-gateway"
+
+	GatewayName = "higress-gateway"
+
+	// GatewayNamespace is the default namespace used by the Higress controller.
+	GatewayNamespace = "higress-system"
+
+	HigressGatewaySvcName = "higress-gateway.higress-system.svc.cluster.local"
+
 	// DefaultAnnotationsPrefix defines the common prefix used in the nginx ingress controller
 	DefaultAnnotationsPrefix = "nginx.ingress.kubernetes.io"
 
