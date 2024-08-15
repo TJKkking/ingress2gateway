@@ -17,16 +17,12 @@ const (
 	CanaryAnnotation    = "canary"
 	CanaryByHeader      = "canary-by-header"
 	CanaryByHeaderVal   = "canary-by-header-value"
-	CanaryByHeaderRegex = "canary-by-header-regex"
+	CanaryByHeaderRegex = "canary-by-header-pattern"
 	CanaryByCookie      = "canary-by-cookie"
 	CanaryWeight        = "canary-weight"
 	CanaryWeightTotal   = "canary-weight-total"
 )
 
-// 1. 从Ingress中提取出所有的IngressRuleGroup
-// 2. 遍历IngressRuleGroup，对每个IngressRuleGroup进行处理，按照host进行分组
-// 3. 对每个IngressRuleGroup，提取出所有的path，按照pathType-path进行分组
-// 4. 对每个pathType-path数组，根据（header-cookie-weight）优先级进行处理，最终得到一个或多个Rule
 func canaryFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.GatewayResources) field.ErrorList {
 	ruleGroups := common.GetRuleGroups(ingresses)
 
@@ -54,9 +50,14 @@ func canaryFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.Gate
 	return nil
 }
 
+type pathBackendRef struct {
+	path       *ingressPath
+	backendRef *gatewayv1.BackendRef
+}
+
 func applyHTTPRouteWithCanary(httpRoute *gatewayv1.HTTPRoute, paths []ingressPath) field.ErrorList {
 	var headerPaths, weightPaths []ingressPath
-	var backendRefsByWeight []gatewayv1.HTTPBackendRef
+	var pathBackendRefsByWeight []pathBackendRef
 	var numBackends int32
 	var errList field.ErrorList
 
@@ -65,7 +66,7 @@ func applyHTTPRouteWithCanary(httpRoute *gatewayv1.HTTPRoute, paths []ingressPat
 		if path.extra != nil && path.extra.canary != nil && path.extra.canary.configExsits() {
 			if path.extra.canary.headerKey != "" {
 				headerPaths = append(headerPaths, path)
-			} else if path.extra.canary.weight > 0 {
+			} else if path.extra.canary.weight >= 0 {
 				weightPaths = append(weightPaths, path)
 			} else {
 				// fmt.Println("canary config not valid")
@@ -77,7 +78,7 @@ func applyHTTPRouteWithCanary(httpRoute *gatewayv1.HTTPRoute, paths []ingressPat
 				errList = append(errList, err)
 				continue
 			}
-			backendRefsByWeight = append(backendRefsByWeight, gatewayv1.HTTPBackendRef{BackendRef: *backendRef})
+			pathBackendRefsByWeight = append(pathBackendRefsByWeight, pathBackendRef{path: &path, backendRef: backendRef})
 			numBackends++
 		}
 	}
@@ -110,10 +111,11 @@ func applyHTTPRouteWithCanary(httpRoute *gatewayv1.HTTPRoute, paths []ingressPat
 		if path.extra.canary.weightTotal > 0 {
 			weightTotal = int32(path.extra.canary.weightTotal)
 		}
-		backendRefsByWeight = append(backendRefsByWeight, gatewayv1.HTTPBackendRef{BackendRef: *backendRef})
+		pathBackendRefsByWeight = append(pathBackendRefsByWeight, pathBackendRef{path: &path, backendRef: backendRef})
 	}
+
 	if len(weightPaths) > 0 {
-		err := adjustWeights(httpRoute, backendRefsByWeight, weightTotal, totalWeightSet, numBackends)
+		err := adjustWeights(httpRoute, pathBackendRefsByWeight, weightTotal, totalWeightSet, numBackends)
 		if err != nil {
 			errList = append(errList, err)
 		}
@@ -122,23 +124,21 @@ func applyHTTPRouteWithCanary(httpRoute *gatewayv1.HTTPRoute, paths []ingressPat
 	return errList
 }
 
-func adjustWeights(httpRoute *gatewayv1.HTTPRoute, backendRefsByWeight []gatewayv1.HTTPBackendRef, weightTotal, totalWeightSet, numBackends int32) *field.Error {
-	if len(backendRefsByWeight) > 0 {
+func adjustWeights(httpRoute *gatewayv1.HTTPRoute, pathBackendRefsByWeight []pathBackendRef, weightTotal, totalWeightSet, numBackends int32) *field.Error {
+	if len(pathBackendRefsByWeight) > 0 {
 		weightToSet := (weightTotal - totalWeightSet) / numBackends
 		if weightToSet < 0 {
 			weightToSet = 0
 		}
-		for i := range backendRefsByWeight {
-			if backendRefsByWeight[i].Weight == nil {
-				backendRefsByWeight[i].Weight = ptr.To(weightToSet)
+		for i := range pathBackendRefsByWeight {
+			if pathBackendRefsByWeight[i].backendRef.Weight == nil {
+				pathBackendRefsByWeight[i].backendRef.Weight = ptr.To(weightToSet)
+			} else if *pathBackendRefsByWeight[i].backendRef.Weight > weightTotal {
+				pathBackendRefsByWeight[i].backendRef.Weight = ptr.To(weightTotal)
 			}
-			if *backendRefsByWeight[i].Weight > weightTotal {
-				backendRefsByWeight[i].Weight = ptr.To(weightTotal)
-			}
-			// fmt.Println("backendRefsByWeight[i].Weight: ", *backendRefsByWeight[i].Weight)
 		}
 
-		patchHTTPRouteWithWeight(httpRoute, backendRefsByWeight)
+		patchHTTPRouteWithWeight(httpRoute, pathBackendRefsByWeight)
 	}
 
 	return nil
@@ -172,9 +172,9 @@ func applyByCanaryHeader(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, back
 			Value: cookieRegex,
 		}
 		match.Headers = append(match.Headers, matchHeader)
-	} else {
+	} else if path.extra.canary.headerRegexMatch {
 		matchHeader := gatewayv1.HTTPHeaderMatch{
-			Type:  getHeaderMatchTypeRegex(),
+			Type:  ptr.To(gatewayv1.HeaderMatchRegularExpression),
 			Name:  gatewayv1.HTTPHeaderName(path.extra.canary.headerKey),
 			Value: path.extra.canary.headerValue,
 		}
@@ -196,24 +196,16 @@ func applyByCanaryHeader(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, back
 	return errors
 }
 
-func patchHTTPRouteWithWeight(httpRoute *gatewayv1.HTTPRoute, backendRefs []gatewayv1.HTTPBackendRef) {
-	for _, backendRef := range backendRefs {
-		ruleExists := false
-
-		for _, rule := range httpRoute.Spec.Rules {
+func patchHTTPRouteWithWeight(httpRoute *gatewayv1.HTTPRoute, pathBackendRefs []pathBackendRef) {
+	for _, backendRef := range pathBackendRefs {
+		rule := findRuleByPath(httpRoute, *backendRef.path)
+		if rule != nil {
 			for i := range rule.BackendRefs {
-				if backendRef.Name == rule.BackendRefs[i].Name {
-					rule.BackendRefs[i].Weight = backendRef.Weight
-					ruleExists = true
+				if backendRef.backendRef.Name == rule.BackendRefs[i].Name {
+					rule.BackendRefs[i].Weight = backendRef.backendRef.Weight
 					break
 				}
 			}
-		}
-
-		if !ruleExists {
-			httpRoute.Spec.Rules = append(httpRoute.Spec.Rules, gatewayv1.HTTPRouteRule{
-				BackendRefs: []gatewayv1.HTTPBackendRef{backendRef},
-			})
 		}
 	}
 }

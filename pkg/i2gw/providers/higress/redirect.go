@@ -80,9 +80,11 @@ func applyByRedirect(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, redirect
 		redirectFilter.Port = &port
 	}
 
-	redirectFilter.Path = &gatewayv1.HTTPPathModifier{
-		Type:            gatewayv1.FullPathHTTPPathModifier,
-		ReplaceFullPath: &parseURL.Path,
+	if parseURL.Path != "" {
+		redirectFilter.Path = &gatewayv1.HTTPPathModifier{
+			Type:            gatewayv1.FullPathHTTPPathModifier,
+			ReplaceFullPath: &parseURL.Path,
+		}
 	}
 	redirectFilter.StatusCode = &redirect.redirectCode
 
@@ -172,19 +174,17 @@ func applyByRootRedirect(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, redi
 	var errors field.ErrorList
 	var redirectFilter gatewayv1.HTTPRequestRedirectFilter
 
-	redirect := path.extra.redirect
-	targetURL := redirect.rootRedirect
+	redirectFilter.Scheme = ptr.To("http")
+	targetURL := path.extra.redirect.rootRedirect
 	redirectFilter.Path = &gatewayv1.HTTPPathModifier{
 		Type:            gatewayv1.FullPathHTTPPathModifier,
-		ReplaceFullPath: &targetURL,
+		ReplaceFullPath: ptr.To(targetURL),
 	}
-	statusCode := DefaultPermanentCode
-	redirectFilter.StatusCode = &statusCode
+	redirectFilter.StatusCode = ptr.To(DefaultTemporalCode)
 
-	pathMatchTypeExact := gatewayv1.PathMatchExact
 	match := gatewayv1.HTTPRouteMatch{
 		Path: &gatewayv1.HTTPPathMatch{
-			Type:  &pathMatchTypeExact,
+			Type:  ptr.To(gatewayv1.PathMatchExact),
 			Value: ptr.To("/"),
 		},
 	}
@@ -274,7 +274,7 @@ type redirectConfig struct {
 
 func (r *redirectConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 	var errs field.ErrorList
-	var err error
+	// var err error
 
 	if sslRedirect := findAnnotationValue(ingress.Annotations, SSLRedirect); sslRedirect != "" {
 		r.sslRedirect = true
@@ -289,12 +289,16 @@ func (r *redirectConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 		r.redirectCode = DefaultPermanentCode
 	}
 
-	if prc := findAnnotationValue(ingress.Annotations, PermanentRedirectCode); prc != "" {
-		r.redirectCode, err = strconv.Atoi(prc)
-		if err != nil {
-			errs = append(errs, field.TypeInvalid(field.NewPath("metadata", "annotations"), PermanentRedirectCode, err.Error()))
-		}
-	}
+	// higress likely doesn't support user-defined redirect codes:
+
+	// HTTPRoute.gateway.networking.k8s.io "httproute-permanent-redirect-code-foo-com" is invalid:
+	// spec.rules[0].filters[0].requestRedirect.statusCode: Unsupported value: 308: supported values: "301", "302"
+	// if prc := findAnnotationValue(ingress.Annotations, PermanentRedirectCode); prc != "" {
+	// 	r.redirectCode, err = strconv.Atoi(prc)
+	// 	if err != nil {
+	// 		errs = append(errs, field.TypeInvalid(field.NewPath("metadata", "annotations"), PermanentRedirectCode, err.Error()))
+	// 	}
+	// }
 
 	if temporalRedirect := findAnnotationValue(ingress.Annotations, TemporalRedirect); temporalRedirect != "" && isValidURL(temporalRedirect) == nil {
 		r.redirectURL = temporalRedirect
