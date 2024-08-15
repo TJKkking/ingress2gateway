@@ -1,9 +1,9 @@
 package higress
 
 import (
-	"reflect"
 	"testing"
 
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
@@ -48,7 +48,7 @@ func TestCreateHTTPRouteRule(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := createHTTPRouteRule(tt.param)
-			if !reflect.DeepEqual(result, tt.expect) {
+			if !apiequality.Semantic.DeepEqual(tt.expect, result) {
 				t.Errorf("expected %+v, got %+v", tt.expect, result)
 			}
 		})
