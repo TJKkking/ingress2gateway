@@ -79,7 +79,7 @@ func applyByRewrite(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, backendRe
 		return nil
 	} else {
 		// fmt.Println("New Rule")
-		deleteBackendNew(httpRoute, path)
+		deleteBackend(httpRoute, path)
 		httpRoute.Spec.Rules = append(httpRoute.Spec.Rules, *createHTTPRouteRule(createHTTPRouteRuleParam{
 			matchs: []gatewayv1.HTTPRouteMatch{createHTTPRouteMatch(path)},
 			filters: []gatewayv1.HTTPRouteFilter{

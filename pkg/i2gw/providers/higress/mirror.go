@@ -37,10 +37,10 @@ func applyHTTPRouteWithMirror(httpRoute *gatewayv1.HTTPRoute, paths []ingressPat
 		var backend gatewayv1.BackendObjectReference
 
 		if mirror.namespace != "" {
-			backend.Namespace = toNamespacePointer(mirror.namespace)
+			backend.Namespace = ptr.To(gatewayv1.Namespace(mirror.namespace))
 		}
 		if mirror.port != 0 {
-			backend.Port = toPortNumber(mirror.port)
+			backend.Port = ptr.To(gatewayv1.PortNumber(mirror.port))
 		}
 		backend.Name = gatewayv1.ObjectName(mirror.targetService)
 		mirrorFilter.BackendRef = backend
@@ -70,7 +70,7 @@ func applyByMirror(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, backendRef
 			},
 		}
 
-		deleteBackendNew(httpRoute, path)
+		deleteBackend(httpRoute, path)
 		httpRoute.Spec.Rules = append(httpRoute.Spec.Rules, gatewayv1.HTTPRouteRule{
 			Matches:     []gatewayv1.HTTPRouteMatch{match},
 			Filters:     []gatewayv1.HTTPRouteFilter{{Type: "RequestMirror", RequestMirror: mirrorFilter}},

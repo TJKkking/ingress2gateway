@@ -156,7 +156,7 @@ func applyByCanaryHeader(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, back
 
 	if !path.extra.canary.cookieMatch && !path.extra.canary.headerRegexMatch {
 		matchHeader := gatewayv1.HTTPHeaderMatch{
-			Type:  getHeaderMatchTypeExact(),
+			Type:  ptr.To(gatewayv1.HeaderMatchExact),
 			Name:  gatewayv1.HTTPHeaderName(path.extra.canary.headerKey),
 			Value: path.extra.canary.headerValue,
 		}
@@ -167,7 +167,7 @@ func applyByCanaryHeader(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, back
 		cookieRegex := fmt.Sprintf("(?:^|;\\s*)%s=%s(?:$|;|\\s)", path.extra.canary.headerKey, "always")
 
 		matchHeader := gatewayv1.HTTPHeaderMatch{
-			Type:  getHeaderMatchTypeRegex(),
+			Type:  ptr.To(gatewayv1.HeaderMatchRegularExpression),
 			Name:  gatewayv1.HTTPHeaderName("cookie"),
 			Value: cookieRegex,
 		}
@@ -185,7 +185,7 @@ func applyByCanaryHeader(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, back
 		rule.Matches = []gatewayv1.HTTPRouteMatch{match}
 		return errors
 	} else {
-		deleteBackendNew(httpRoute, path)
+		deleteBackend(httpRoute, path)
 		backendRefs = append(backendRefs, gatewayv1.HTTPBackendRef{BackendRef: *backendRef})
 		httpRoute.Spec.Rules = append(httpRoute.Spec.Rules, gatewayv1.HTTPRouteRule{
 			Matches:     []gatewayv1.HTTPRouteMatch{match},

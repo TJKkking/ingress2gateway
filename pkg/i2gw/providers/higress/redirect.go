@@ -115,7 +115,7 @@ func applyByRedirect(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, redirect
 			},
 		}))
 	}
-	delErr := deleteBackendNew(httpRoute, path)
+	delErr := deleteBackend(httpRoute, path)
 	if delErr != nil {
 		errors = append(errors, field.Invalid(field.NewPath("metadata", "annotations"), path.ingress.Annotations, delErr.Error()))
 	}
@@ -157,7 +157,7 @@ func applyBySSLRedirect(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, redir
 			}),
 		}, *redirectRules...)
 	}
-	err := deleteBackendNew(httpRoute, path)
+	err := deleteBackend(httpRoute, path)
 	if err != nil {
 		errors = append(errors, field.Invalid(field.NewPath("metadata", "annotations"), path.ingress.Annotations, err.Error()))
 	}

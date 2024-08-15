@@ -16,10 +16,10 @@ type AnnotationHandler interface {
 // 1. Define all feature's annotation struct
 // 2. Edit Parse method for each struct
 // 3. Implement getPathsByMatchGroupsNew
-func getPathsByMatchGroupsNew(rg common.IngressRuleGroup) (map[pathMatchKey][]ingressPath, field.ErrorList) {
-	// TODO: implement this function
-	return nil, nil
-}
+// func getPathsByMatchGroupsNew(rg common.IngressRuleGroup) (map[pathMatchKey][]ingressPath, field.ErrorList) {
+// 	// TODO: implement this function
+// 	return nil, nil
+// }
 
 func getPathsByMatchGroups(rg common.IngressRuleGroup) (map[pathMatchKey][]ingressPath, field.ErrorList) {
 	ingressPathsByMatchKey := map[pathMatchKey][]ingressPath{}
@@ -30,12 +30,21 @@ func getPathsByMatchGroups(rg common.IngressRuleGroup) (map[pathMatchKey][]ingre
 		extraFeatures := &extra{}
 
 		// parse header control annotations
-		headerMod := headerModConfig{}
-		if err := headerMod.Parse(&ingress); err != nil {
+		requestHeaderMod := requestHeaderModConfig{}
+		if err := requestHeaderMod.Parse(&ingress); err != nil {
 			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
 		}
-		if headerMod.configExsits() {
-			extraFeatures.headerMod = &headerMod
+		if requestHeaderMod.configExsits() {
+			extraFeatures.requestHeaderMod = &requestHeaderMod
+		}
+
+		// parse response header control annotations
+		responseHeaderMod := responseHeaderModConfig{}
+		if err := responseHeaderMod.Parse(&ingress); err != nil {
+			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
+		}
+		if responseHeaderMod.configExsits() {
+			extraFeatures.responseHeaderMod = &responseHeaderMod
 		}
 
 		// parse redirect annotations
