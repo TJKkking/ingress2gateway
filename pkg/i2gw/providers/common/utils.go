@@ -19,6 +19,7 @@ package common
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	networkingv1 "k8s.io/api/networking/v1"
 	networkingv1beta1 "k8s.io/api/networking/v1beta1"
@@ -88,16 +89,24 @@ func GetRuleGroups(ingresses []networkingv1.Ingress) map[string]IngressRuleGroup
 }
 
 func NameFromHost(host string) string {
+	if len(host) == 0 || host == "*" {
+		return "all-hosts"
+	}
+	// replace * with wildcard to distinguish "example.com" from "*.example.com".
+	if strings.HasPrefix(host, "*") {
+		host = strings.Replace(host, "*", "wildcard", 1)
+	}
+	// replace . with -dot- to avoid conflicts with the separator.
+	// For example, "api.example.com" and "api-example.com" should be different.
+	host = strings.ReplaceAll(host, ".", "-dot-")
+
 	// replace all special chars with -
 	reg, _ := regexp.Compile("[^a-zA-Z0-9]+")
 	step1 := reg.ReplaceAllString(host, "-")
 	// remove all - at start of string
 	reg2, _ := regexp.Compile("^[^a-zA-Z0-9]+")
 	step2 := reg2.ReplaceAllString(step1, "")
-	// if nothing left, return "all-hosts"
-	if len(host) == 0 || host == "*" {
-		return "all-hosts"
-	}
+
 	return step2
 }
 
