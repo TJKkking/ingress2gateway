@@ -322,7 +322,7 @@ func isEqualExtra(a, b *extra) bool {
 	}
 	// Check each configuration; assuming each has a corresponding isEqual function
 	return isEqualCanaryConfig(a.canary, b.canary) &&
-		isEqualHeaderModConfig(a.headerMod, b.headerMod) &&
+		isEqualHeaderModConfig(a.requestHeaderMod, b.requestHeaderMod) &&
 		isEqualRewriteConfig(a.rewrite, b.rewrite) &&
 		isEqualRedirectConfig(a.redirect, b.redirect) &&
 		isEqualMirrorConfig(a.mirror, b.mirror) &&
@@ -345,7 +345,7 @@ func isEqualCanaryConfig(a, b *canaryConfig) bool {
 		a.weightTotal == b.weightTotal
 }
 
-func isEqualHeaderModConfig(a, b *headerModConfig) bool {
+func isEqualHeaderModConfig(a, b *requestHeaderModConfig) bool {
 	if a == b {
 		return true
 	}
