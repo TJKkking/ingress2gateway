@@ -104,8 +104,7 @@ func NameFromHost(host string) string {
 	reg, _ := regexp.Compile("[^a-zA-Z0-9]+")
 	step1 := reg.ReplaceAllString(host, "-")
 	// remove all - at start of string
-	reg2, _ := regexp.Compile("^[^a-zA-Z0-9]+")
-	step2 := reg2.ReplaceAllString(step1, "")
+	step2 := strings.Trim(step1, "-")
 
 	return step2
 }

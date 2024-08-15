@@ -23,6 +23,37 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 )
 
+func TestNameFromHost(t *testing.T) {
+	testCases := []struct {
+		host     string
+		expected string
+	}{
+		{"example.com", "example-dot-com"},
+		{"*.example.com", "wildcard-dot-example-dot-com"},
+		{"", "all-hosts"},
+		{"*", "all-hosts"},
+		{"api.example.com", "api-dot-example-dot-com"},
+		{"api-example.com", "api-example-dot-com"},
+		{"api_example.com", "api-example-dot-com"},
+		{"api!example.com", "api-example-dot-com"},
+		{"www.example.com", "www-dot-example-dot-com"},
+		{"example", "example"},
+		{"example.com/", "example-dot-com"},
+		{"example-.com", "example-dot-com"},
+		{"-example.com", "example-dot-com"},
+		{"example.com-", "example-dot-com"},
+		{"123.com", "123-dot-com"},
+		{"example!*@.com", "example-dot-com"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.host, func(t *testing.T) {
+			result := NameFromHost(tc.host)
+			require.Equal(t, tc.expected, result)
+		})
+	}
+}
+
 func TestGroupIngressPathsByMatchKey(t *testing.T) {
 	iPrefix := networkingv1.PathTypePrefix
 
