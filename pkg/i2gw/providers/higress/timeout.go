@@ -1,9 +1,13 @@
 package higress
 
 import (
+	"fmt"
 	"strconv"
 
+	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw"
+	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
@@ -11,6 +15,33 @@ import (
 const (
 	HigressTimeout = "timeout"
 )
+
+func timeoutFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.GatewayResources) field.ErrorList {
+	ruleGroups := common.GetRuleGroups(ingresses)
+	var errors field.ErrorList
+
+	for _, rg := range ruleGroups {
+		ingressPathsByMatchKey, errs := getPathsByMatchGroups(rg, AnnotationTimeout)
+		if len(errs) > 0 {
+			return errs
+		}
+
+		for _, paths := range ingressPathsByMatchKey {
+			path := paths[0]
+			key := types.NamespacedName{Namespace: path.ingress.Namespace, Name: common.RouteName(rg.Name, rg.Host)}
+			httpRoute, ok := gatewayResources.HTTPRoutes[key]
+			if !ok {
+				errors = append(errors, field.InternalError(field.NewPath("HTTPRoutes"), fmt.Errorf("http route %s not found", key)))
+				continue
+			}
+
+			applyHTTPRouteWithTimeout(&httpRoute, paths)
+			gatewayResources.HTTPRoutes[key] = httpRoute
+		}
+	}
+
+	return errors
+}
 
 func applyHTTPRouteWithTimeout(httpRoute *gatewayv1.HTTPRoute, paths []ingressPath) field.ErrorList {
 	var errors field.ErrorList

@@ -12,18 +12,23 @@ import (
 
 type AnnotationHandler interface {
 	Parse(ingress networkingv1.Ingress) field.ErrorList
+	configExsits() bool
 }
 
-// TODO: use interface to handle different annotations
-// 1. Define all feature's annotation struct
-// 2. Edit Parse method for each struct
-// 3. Implement getPathsByMatchGroupsNew
-// func getPathsByMatchGroupsNew(rg common.IngressRuleGroup) (map[pathMatchKey][]ingressPath, field.ErrorList) {
-// 	// TODO: implement this function
-// 	return nil, nil
-// }
+// Define an enum or constants for annotation types
+type AnnotationType string
 
-func getPathsByMatchGroups(rg common.IngressRuleGroup) (map[pathMatchKey][]ingressPath, field.ErrorList) {
+const (
+	AnnotationRequestHeaderMod  AnnotationType = "requestHeaderMod"
+	AnnotationResponseHeaderMod AnnotationType = "responseHeaderMod"
+	AnnotationRedirect          AnnotationType = "redirect"
+	AnnotationMirror            AnnotationType = "mirror"
+	AnnotationTimeout           AnnotationType = "timeout"
+	AnnotationCanary            AnnotationType = "canary"
+	AnnotationRewrite           AnnotationType = "rewrite"
+)
+
+func getPathsByMatchGroups(rg common.IngressRuleGroup, annotationType AnnotationType) (map[pathMatchKey][]ingressPath, field.ErrorList) {
 	ingressPathsByMatchKey := map[pathMatchKey][]ingressPath{}
 	var errs field.ErrorList
 
@@ -31,63 +36,56 @@ func getPathsByMatchGroups(rg common.IngressRuleGroup) (map[pathMatchKey][]ingre
 		ingress := ir.Ingress
 		extraFeatures := &extra{}
 
-		// parse header control annotations
-		requestHeaderMod := requestHeaderModConfig{}
-		if err := requestHeaderMod.Parse(&ingress); err != nil {
-			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
-		}
-		if requestHeaderMod.configExsits() {
-			extraFeatures.requestHeaderMod = &requestHeaderMod
-		}
-
-		// parse response header control annotations
-		responseHeaderMod := responseHeaderModConfig{}
-		if err := responseHeaderMod.Parse(&ingress); err != nil {
-			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
-		}
-		if responseHeaderMod.configExsits() {
-			extraFeatures.responseHeaderMod = &responseHeaderMod
-		}
-
-		// parse redirect annotations
-		redirect := redirectConfig{}
-		if err := redirect.Parse(&ingress); err != nil {
-			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
-		}
-		if redirect.configExsits() {
-			extraFeatures.redirect = &redirect
-		}
-
-		// parse mirror annotations
-		mirror := mirrorConfig{}
-		if err := mirror.Parse(&ingress); err != nil {
-			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
-		}
-		if mirror.configExsits() {
-			extraFeatures.mirror = &mirror
-		}
-
-		// parse timeout annotations
-		timeout := timeoutConfig{}
-		if err := timeout.Parse(&ingress); err != nil {
-			errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
-		}
-		if timeout.configExsits() {
-			extraFeatures.timeout = &timeout
-		}
-
-		if !redirect.redirectExsits() {
-
-			// parse canary annotations
+		switch annotationType {
+		case AnnotationRequestHeaderMod:
+			requestHeaderMod := requestHeaderModConfig{}
+			if err := requestHeaderMod.Parse(&ingress); err != nil {
+				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
+			}
+			if requestHeaderMod.configExsits() {
+				extraFeatures.requestHeaderMod = &requestHeaderMod
+			}
+		case AnnotationResponseHeaderMod:
+			responseHeaderMod := responseHeaderModConfig{}
+			if err := responseHeaderMod.Parse(&ingress); err != nil {
+				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
+			}
+			if responseHeaderMod.configExsits() {
+				extraFeatures.responseHeaderMod = &responseHeaderMod
+			}
+		case AnnotationRedirect:
+			redirect := redirectConfig{}
+			if err := redirect.Parse(&ingress); err != nil {
+				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
+			}
+			if redirect.configExsits() {
+				extraFeatures.redirect = &redirect
+			}
+		case AnnotationMirror:
+			mirror := mirrorConfig{}
+			if err := mirror.Parse(&ingress); err != nil {
+				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
+			}
+			if mirror.configExsits() {
+				extraFeatures.mirror = &mirror
+			}
+		case AnnotationTimeout:
+			timeout := timeoutConfig{}
+			if err := timeout.Parse(&ingress); err != nil {
+				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
+			}
+			if timeout.configExsits() {
+				extraFeatures.timeout = &timeout
+			}
+		case AnnotationCanary:
 			canaryAnnotations := canaryConfig{}
-			if err := canaryAnnotations.parse(&ingress); err != nil {
+			if err := canaryAnnotations.Parse(&ingress); err != nil {
 				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
 			}
 			if canaryAnnotations.configExsits() {
 				extraFeatures.canary = &canaryAnnotations
 			}
-
-			// parse rewrite annotations
+		case AnnotationRewrite:
 			rewrite := rewriteConfig{}
 			if err := rewrite.Parse(&ingress); err != nil {
 				errs = append(errs, field.Invalid(field.NewPath("metadata", "annotations"), ingress.Annotations, err.ToAggregate().Error()))
@@ -95,9 +93,9 @@ func getPathsByMatchGroups(rg common.IngressRuleGroup) (map[pathMatchKey][]ingre
 			if rewrite.configExsits() {
 				extraFeatures.rewrite = &rewrite
 			}
-
 		}
 
+		// After parsing the specific annotation, process the ingress paths
 		for _, path := range ir.IngressRule.HTTP.Paths {
 			ip := ingressPath{ingress: ingress, ruleType: "http", path: path, extra: extraFeatures}
 			pmKey := getPathMatchKey(ip)

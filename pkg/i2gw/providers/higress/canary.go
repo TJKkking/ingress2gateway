@@ -23,12 +23,21 @@ const (
 	CanaryWeightTotal   = "canary-weight-total"
 )
 
+type canaryConfig struct {
+	enable           bool
+	headerKey        string
+	headerValue      string
+	headerRegexMatch bool
+	cookieMatch      bool
+	weight           int
+	weightTotal      int
+}
+
 func canaryFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.GatewayResources) field.ErrorList {
 	ruleGroups := common.GetRuleGroups(ingresses)
 
 	for _, rg := range ruleGroups {
-		// 按照pathType-path进行分组
-		ingressPathsByMatchKey, errs := getPathsByMatchGroups(rg)
+		ingressPathsByMatchKey, errs := getPathsByMatchGroups(rg, AnnotationCanary)
 		if len(errs) > 0 {
 			return errs
 		}
@@ -38,7 +47,6 @@ func canaryFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.Gate
 			key := types.NamespacedName{Namespace: path.ingress.Namespace, Name: common.RouteName(rg.Name, rg.Host)}
 			httpRoute, ok := gatewayResources.HTTPRoutes[key]
 			if !ok {
-				fmt.Println("httpRoute not found")
 				continue
 			}
 
@@ -210,17 +218,7 @@ func patchHTTPRouteWithWeight(httpRoute *gatewayv1.HTTPRoute, pathBackendRefs []
 	}
 }
 
-type canaryConfig struct {
-	enable           bool
-	headerKey        string
-	headerValue      string
-	headerRegexMatch bool
-	cookieMatch      bool
-	weight           int
-	weightTotal      int
-}
-
-func (c *canaryConfig) parse(ingress *networkingv1.Ingress) field.ErrorList {
+func (c *canaryConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 	// 当多种方式同时配置时，灰度方式选择优先级为：基于Header  > 基于Cookie > 基于权重（从高到低）。
 	// 所有配置的canary注解的Ingress生效的前提是存在host-pathType-path相同的基线配置（没有canary注解）
 	var errs field.ErrorList
