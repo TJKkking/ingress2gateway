@@ -1,10 +1,14 @@
 package higress
 
 import (
+	"fmt"
 	"net/url"
 	"strconv"
 
+	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw"
+	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -25,6 +29,33 @@ const (
 	DefaultSSLRedirectCode = 308
 	RootPath               = "/"
 )
+
+func redirectFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.GatewayResources) field.ErrorList {
+	ruleGroups := common.GetRuleGroups(ingresses)
+	var errors field.ErrorList
+
+	for _, rg := range ruleGroups {
+		ingressPathsByMatchKey, errs := getPathsByMatchGroups(rg, AnnotationRedirect)
+		if len(errs) > 0 {
+			return errs
+		}
+
+		for _, paths := range ingressPathsByMatchKey {
+			path := paths[0]
+			key := types.NamespacedName{Namespace: path.ingress.Namespace, Name: common.RouteName(rg.Name, rg.Host)}
+			httpRoute, ok := gatewayResources.HTTPRoutes[key]
+			if !ok {
+				errors = append(errors, field.InternalError(field.NewPath("HTTPRoutes"), fmt.Errorf("http route %s not found", key)))
+				continue
+			}
+
+			applyHTTPRouteWithRedirect(&httpRoute, paths)
+			gatewayResources.HTTPRoutes[key] = httpRoute
+		}
+	}
+
+	return errors
+}
 
 func applyHTTPRouteWithRedirect(httpRoute *gatewayv1.HTTPRoute, paths []ingressPath) field.ErrorList {
 	var errors field.ErrorList
@@ -276,11 +307,11 @@ func (r *redirectConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 	var errs field.ErrorList
 	// var err error
 
-	if sslRedirect := findAnnotationValue(ingress.Annotations, SSLRedirect); sslRedirect != "" {
+	if sslRedirect := findAnnotationValue(ingress.Annotations, SSLRedirect); sslRedirect == "true" {
 		r.sslRedirect = true
 	}
 
-	if forceSSLRedirect := findAnnotationValue(ingress.Annotations, ForceSSLRedirect); forceSSLRedirect != "" {
+	if forceSSLRedirect := findAnnotationValue(ingress.Annotations, ForceSSLRedirect); forceSSLRedirect == "true" {
 		r.sslRedirect = true
 	}
 
@@ -305,7 +336,6 @@ func (r *redirectConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 		r.redirectCode = DefaultTemporalCode
 	}
 
-	// fmt.Println("appRoot: ", ingress.Annotations[buildNginxAnnotationKey(AppRoot)])
 	if appRoot := findAnnotationValue(ingress.Annotations, AppRoot); appRoot != "" {
 		r.rootRedirect = appRoot
 	}
@@ -315,8 +345,4 @@ func (r *redirectConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 
 func (r *redirectConfig) configExsits() bool {
 	return r.sslRedirect || r.redirectURL != "" || r.rootRedirect != ""
-}
-
-func (r *redirectConfig) redirectExsits() bool {
-	return r.redirectURL != "" || r.sslRedirect
 }

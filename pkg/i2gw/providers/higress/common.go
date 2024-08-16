@@ -3,8 +3,10 @@ package higress
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
+	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
@@ -252,4 +254,43 @@ func groupCaptureUsed(path string) *field.Error {
 		return field.Invalid(field.NewPath("metadata", "annotations"), path, "'(' or ')' found, group capture not supported")
 	}
 	return nil
+}
+
+func setDefaultNamespaceAndGatewayClass(gatewayResources *i2gw.GatewayResources) {
+	// Set the default namespace and gateway class name for the gateway resources.
+	for idx := range gatewayResources.Gateways {
+		temp := gatewayResources.Gateways[idx]
+		temp.ObjectMeta.Namespace = GatewayNamespace
+		// temp.ObjectMeta.Name = GatewayName
+		temp.Spec.GatewayClassName = gatewayv1.ObjectName(GatewayClassName)
+		temp.Spec.Addresses = []gatewayv1.GatewayAddress{
+			{
+				Type:  ptr.To(gatewayv1.AddressType("Hostname")),
+				Value: HigressGatewaySvcName,
+			},
+		}
+
+		// Higress can only handle gateway from "higress-system" namespaces. So we set the allowed routes to "All".
+		for i := range temp.Spec.Listeners {
+			// name add the index
+			lname := string(temp.Spec.Listeners[i].Name) + "-" + strconv.Itoa(i)
+			temp.Spec.Listeners[i].Name = gatewayv1.SectionName(lname)
+			temp.Spec.Listeners[i].AllowedRoutes = &gatewayv1.AllowedRoutes{
+				Namespaces: &gatewayv1.RouteNamespaces{
+					From: ptr.To(gatewayv1.FromNamespaces("All")),
+				},
+			}
+		}
+		gatewayResources.Gateways[idx] = temp
+	}
+
+	// Set the default ParentRefs namespace for the HTTPRoutes.
+	for idx := range gatewayResources.HTTPRoutes {
+		temp := gatewayResources.HTTPRoutes[idx]
+		for i := range temp.Spec.ParentRefs {
+			temp.Spec.ParentRefs[i].Namespace = ptr.To(gatewayv1.Namespace(GatewayNamespace))
+			// temp.Spec.ParentRefs[i].Name = gatewayv1.ObjectName(GatewayName)
+		}
+		gatewayResources.HTTPRoutes[idx] = temp
+	}
 }

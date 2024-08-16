@@ -1,8 +1,12 @@
 package higress
 
 import (
+	"fmt"
+
+	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw"
 	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -19,6 +23,33 @@ type responseHeaderModConfig struct {
 	add    map[string]string
 	update map[string]string
 	remove []string
+}
+
+func responseHeaderModFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.GatewayResources) field.ErrorList {
+	ruleGroups := common.GetRuleGroups(ingresses)
+	var errors field.ErrorList
+
+	for _, rg := range ruleGroups {
+		ingressPathsByMatchKey, errs := getPathsByMatchGroups(rg, AnnotationResponseHeaderMod)
+		if len(errs) > 0 {
+			return errs
+		}
+
+		for _, paths := range ingressPathsByMatchKey {
+			path := paths[0]
+			key := types.NamespacedName{Namespace: path.ingress.Namespace, Name: common.RouteName(rg.Name, rg.Host)}
+			httpRoute, ok := gatewayResources.HTTPRoutes[key]
+			if !ok {
+				errors = append(errors, field.InternalError(field.NewPath("HTTPRoutes"), fmt.Errorf("http route %s not found", key)))
+				continue
+			}
+
+			applyHTTPRouteWithResponseHeaderMod(&httpRoute, paths)
+			gatewayResources.HTTPRoutes[key] = httpRoute
+		}
+	}
+
+	return errors
 }
 
 func applyHTTPRouteWithResponseHeaderMod(httpRoute *gatewayv1.HTTPRoute, paths []ingressPath) field.ErrorList {
@@ -58,6 +89,7 @@ func applyHTTPRouteWithResponseHeaderMod(httpRoute *gatewayv1.HTTPRoute, paths [
 			removeHeaders = append(removeHeaders, headerMod.remove...)
 			headerFilter.Remove = removeHeaders
 		}
+
 		gwHTTPRouteFilters = append(gwHTTPRouteFilters, gatewayv1.HTTPRouteFilter{
 			Type:                   gatewayv1.HTTPRouteFilterResponseHeaderModifier,
 			ResponseHeaderModifier: &headerFilter,
@@ -98,16 +130,30 @@ func applyByResponseHeaderMod(httpRoute *gatewayv1.HTTPRoute, path *ingressPath,
 }
 
 func (h *responseHeaderModConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
+	var errors field.ErrorList
 	if hAdd := findAnnotationValue(ingress.Annotations, ResponseHeaderAdd); hAdd != "" {
-		h.add = convertAddOrUpdate(hAdd)
+		ha, err := convertAddOrUpdate(hAdd)
+		if err != nil {
+			errors = append(errors, err...)
+		} else {
+			h.add = ha
+		}
 	}
 	if hUpdate := findAnnotationValue(ingress.Annotations, ResponseHeaderUpdate); hUpdate != "" {
-		h.update = convertAddOrUpdate(hUpdate)
+		hu, err := convertAddOrUpdate(hUpdate)
+		if err != nil {
+			errors = append(errors, err...)
+		} else {
+			h.update = hu
+		}
 	}
 	if hRemove := findAnnotationValue(ingress.Annotations, ResponseHeaderRemove); hRemove != "" {
 		h.remove = splitBySeparator(hRemove, ",")
 	}
 
+	if len(errors) > 0 {
+		return errors
+	}
 	return nil
 }
 

@@ -1,11 +1,14 @@
 package higress
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw"
 	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/ptr"
 	gatewayv1 "sigs.k8s.io/gateway-api/apis/v1"
@@ -19,6 +22,33 @@ type mirrorConfig struct {
 	namespace     string
 	targetService string
 	port          int
+}
+
+func mirrorFeature(ingresses []networkingv1.Ingress, gatewayResources *i2gw.GatewayResources) field.ErrorList {
+	ruleGroups := common.GetRuleGroups(ingresses)
+	var errors field.ErrorList
+
+	for _, rg := range ruleGroups {
+		ingressPathsByMatchKey, errs := getPathsByMatchGroups(rg, AnnotationMirror)
+		if len(errs) > 0 {
+			return errs
+		}
+
+		for _, paths := range ingressPathsByMatchKey {
+			path := paths[0]
+			key := types.NamespacedName{Namespace: path.ingress.Namespace, Name: common.RouteName(rg.Name, rg.Host)}
+			httpRoute, ok := gatewayResources.HTTPRoutes[key]
+			if !ok {
+				errors = append(errors, field.InternalError(field.NewPath("HTTPRoutes"), fmt.Errorf("http route %s not found", key)))
+				continue
+			}
+
+			applyHTTPRouteWithMirror(&httpRoute, paths)
+			gatewayResources.HTTPRoutes[key] = httpRoute
+		}
+	}
+
+	return errors
 }
 
 func applyHTTPRouteWithMirror(httpRoute *gatewayv1.HTTPRoute, paths []ingressPath) field.ErrorList {
