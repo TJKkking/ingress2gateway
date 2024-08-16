@@ -26,7 +26,7 @@ func applyHTTPRouteWithRewrite(httpRoute *gatewayv1.HTTPRoute, paths []ingressPa
 
 	for _, path := range paths {
 		if path.extra != nil && path.extra.rewrite != nil && path.extra.rewrite.configExsits() {
-			// TODO: keep capture groups or not?
+			// TODO: keep capture groups or not? no.
 			if err := isPathValid(path.path.Path); err != nil {
 				errors = append(errors, err)
 				continue
@@ -71,14 +71,12 @@ func toPathModifier(path string) *gatewayv1.HTTPPathModifier {
 
 func applyByRewrite(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, backendRef *gatewayv1.BackendRef, URLRewrite *gatewayv1.HTTPURLRewriteFilter) *field.Error {
 	if rule := singleBackendRuleExists(httpRoute, path); rule != nil {
-		// fmt.Println("bakendRef Name is: ", backendRef.Name)
 		rule.Filters = append(rule.Filters, gatewayv1.HTTPRouteFilter{
 			Type:       gatewayv1.HTTPRouteFilterURLRewrite,
 			URLRewrite: URLRewrite,
 		})
 		return nil
 	} else {
-		// fmt.Println("New Rule")
 		deleteBackend(httpRoute, path)
 		httpRoute.Spec.Rules = append(httpRoute.Spec.Rules, *createHTTPRouteRule(createHTTPRouteRuleParam{
 			matchs: []gatewayv1.HTTPRouteMatch{createHTTPRouteMatch(path)},

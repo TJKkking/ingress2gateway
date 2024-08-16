@@ -17,7 +17,6 @@ limitations under the License.
 package higress
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw"
@@ -103,7 +102,6 @@ func (c *converter) convert(storage *storage) (i2gw.GatewayResources, field.Erro
 		}
 		gatewayResources.HTTPRoutes[idx] = temp
 	}
-	fmt.Println("len of gatewayResources.HTTPRoutes: ", len(gatewayResources.HTTPRoutes))
 
 	ruleGroups := common.GetRuleGroups(ingressList)
 	for _, rg := range ruleGroups {

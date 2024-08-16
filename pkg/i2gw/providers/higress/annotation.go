@@ -2,6 +2,8 @@ package higress
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -135,4 +137,26 @@ func buildNginxAnnotationKey(key string) string {
 
 func buildHigressAnnotationKey(key string) string {
 	return HigressAnnotationsPrefix + "/" + key
+}
+
+var pattern = regexp.MustCompile(`\s+`)
+
+func convertAddOrUpdate(headers string) (map[string]string, field.ErrorList) {
+	result := map[string]string{}
+	parts := strings.Split(headers, "\n")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		keyValue := pattern.Split(part, 2)
+		if len(keyValue) != 2 {
+			return nil, field.ErrorList{field.Invalid(field.NewPath("request-header-control-add"), part, "invalid format")}
+		}
+		key := trimQuotes(strings.TrimSpace(keyValue[0]))
+		value := trimQuotes(strings.TrimSpace(keyValue[1]))
+		result[key] = value
+	}
+	return result, nil
 }

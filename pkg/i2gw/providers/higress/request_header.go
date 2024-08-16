@@ -1,10 +1,6 @@
 package higress
 
 import (
-	"fmt"
-	"regexp"
-	"strings"
-
 	"github.com/kubernetes-sigs/ingress2gateway/pkg/i2gw/providers/common"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -103,43 +99,33 @@ func applyByRequestHeaderMod(httpRoute *gatewayv1.HTTPRoute, path *ingressPath, 
 }
 
 func (h *requestHeaderModConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
+	var errors field.ErrorList
 	if hAdd := findAnnotationValue(ingress.Annotations, RequestHeaderAdd); hAdd != "" {
-		h.add = convertAddOrUpdate(hAdd)
+		ha, err := convertAddOrUpdate(hAdd)
+		if err != nil {
+			errors = append(errors, err...)
+		} else {
+			h.add = ha
+		}
 	}
 	if hUpdate := findAnnotationValue(ingress.Annotations, RequestHeaderUpdate); hUpdate != "" {
-		h.update = convertAddOrUpdate(hUpdate)
+		hu, err := convertAddOrUpdate(hUpdate)
+		if err != nil {
+			errors = append(errors, err...)
+		} else {
+			h.update = hu
+		}
 	}
 	if hRemove := findAnnotationValue(ingress.Annotations, RequestHeaderRemove); hRemove != "" {
 		h.remove = splitBySeparator(hRemove, ",")
 	}
 
+	if len(errors) > 0 {
+		return errors
+	}
 	return nil
 }
 
 func (h *requestHeaderModConfig) configExsits() bool {
 	return h.add != nil || h.update != nil || h.remove != nil
-}
-
-var pattern = regexp.MustCompile(`\s+`)
-
-func convertAddOrUpdate(headers string) map[string]string {
-	result := map[string]string{}
-	parts := strings.Split(headers, "\n")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-
-		keyValue := pattern.Split(part, 2)
-		if len(keyValue) != 2 {
-			// errors.New("invalid header format")
-			fmt.Println("invalid header format")
-			continue
-		}
-		key := trimQuotes(strings.TrimSpace(keyValue[0]))
-		value := trimQuotes(strings.TrimSpace(keyValue[1]))
-		result[key] = value
-	}
-	return result
 }

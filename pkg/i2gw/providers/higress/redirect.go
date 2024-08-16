@@ -305,7 +305,6 @@ func (r *redirectConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
 		r.redirectCode = DefaultTemporalCode
 	}
 
-	// fmt.Println("appRoot: ", ingress.Annotations[buildNginxAnnotationKey(AppRoot)])
 	if appRoot := findAnnotationValue(ingress.Annotations, AppRoot); appRoot != "" {
 		r.rootRedirect = appRoot
 	}

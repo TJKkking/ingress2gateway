@@ -58,6 +58,7 @@ func applyHTTPRouteWithResponseHeaderMod(httpRoute *gatewayv1.HTTPRoute, paths [
 			removeHeaders = append(removeHeaders, headerMod.remove...)
 			headerFilter.Remove = removeHeaders
 		}
+
 		gwHTTPRouteFilters = append(gwHTTPRouteFilters, gatewayv1.HTTPRouteFilter{
 			Type:                   gatewayv1.HTTPRouteFilterResponseHeaderModifier,
 			ResponseHeaderModifier: &headerFilter,
@@ -98,16 +99,30 @@ func applyByResponseHeaderMod(httpRoute *gatewayv1.HTTPRoute, path *ingressPath,
 }
 
 func (h *responseHeaderModConfig) Parse(ingress *networkingv1.Ingress) field.ErrorList {
+	var errors field.ErrorList
 	if hAdd := findAnnotationValue(ingress.Annotations, ResponseHeaderAdd); hAdd != "" {
-		h.add = convertAddOrUpdate(hAdd)
+		ha, err := convertAddOrUpdate(hAdd)
+		if err != nil {
+			errors = append(errors, err...)
+		} else {
+			h.add = ha
+		}
 	}
 	if hUpdate := findAnnotationValue(ingress.Annotations, ResponseHeaderUpdate); hUpdate != "" {
-		h.update = convertAddOrUpdate(hUpdate)
+		hu, err := convertAddOrUpdate(hUpdate)
+		if err != nil {
+			errors = append(errors, err...)
+		} else {
+			h.update = hu
+		}
 	}
 	if hRemove := findAnnotationValue(ingress.Annotations, ResponseHeaderRemove); hRemove != "" {
 		h.remove = splitBySeparator(hRemove, ",")
 	}
 
+	if len(errors) > 0 {
+		return errors
+	}
 	return nil
 }
 
