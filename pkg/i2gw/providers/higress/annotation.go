@@ -28,6 +28,9 @@ const (
 	AnnotationRewrite           AnnotationType = "rewrite"
 )
 
+// getPathsByMatchGroups returns a map of ingress paths grouped by match keys, along with a list of field errors.
+// The function parses the specific annotation type for each ingress rule in the rule group and processes the ingress paths.
+// The parsed ingress paths are grouped by match keys and returned as a map.
 func getPathsByMatchGroups(rg common.IngressRuleGroup, annotationType AnnotationType) (map[pathMatchKey][]ingressPath, field.ErrorList) {
 	ingressPathsByMatchKey := map[pathMatchKey][]ingressPath{}
 	var errs field.ErrorList
@@ -111,11 +114,6 @@ func getPathMatchKey(ip ingressPath) pathMatchKey {
 	if ip.path.PathType != nil {
 		pathType = string(*ip.path.PathType)
 	}
-	// var canaryHeaderKey string
-	// if ip.extra != nil && ip.extra.canary != nil && ip.extra.canary.headerKey != "" {
-	// 	canaryHeaderKey = ip.extra.canary.headerKey
-	// }
-	// 同一host下的path以pathType-path作为key聚合
 	return pathMatchKey(fmt.Sprintf("%s%s", pathType, ip.path.Path))
 }
 

@@ -64,7 +64,7 @@ func Test_getPathsByMatchGroups(t *testing.T) {
 
 	// Test function
 	t.Run("Valid annotations", func(t *testing.T) {
-		pathsByKey, errs := getPathsByMatchGroups(mockIngressRuleGroup)
+		pathsByKey, errs := getPathsByMatchGroups(mockIngressRuleGroup, AnnotationRewrite)
 
 		if !isEqualMapStringIngressPaths(pathsByKey, expectedPathsByKey) {
 			t.Errorf("Expected pathsByKey to be %v, got %v", expectedPathsByKey, pathsByKey)

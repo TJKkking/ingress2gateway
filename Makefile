@@ -18,6 +18,9 @@
 # Enable Go modules.
 export GO111MODULE=on
 
+# define the name of the executable
+EXECUTABLE=ingress2gateway
+
 # Print the help menu.
 .PHONY: help
 help:
@@ -51,3 +54,17 @@ build: vet;$(info $(M)...Build the binary.)  @ ## Build the binary.
 .PHONY: verify
 verify:
 	hack/verify-all.sh -v
+
+# define the target directory
+TARGET_DIR=~/Github.com/higress/test/e2e/conformance/utils/ingress2gateway/
+
+.PHONY: copy
+copy:
+	cp $(EXECUTABLE) $(TARGET_DIR)
+
+.PHONY: clean
+clean:
+	rm -f $(EXECUTABLE)
+
+.PHONY: buildcp
+buildcp: build copy
